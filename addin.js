@@ -71,15 +71,39 @@ geotab.addin.usafsCameraHealth = function () {
     ]);
     elRoot.appendChild(meta);
 
+    var actionsRow = el("div", {
+      style: "display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px;",
+    });
+
     if (reportUrl) {
-      elRoot.appendChild(el("a", {
-        style: "display:inline-block;font-size:13px;color:#2980b9;text-decoration:none;margin-bottom:10px;",
+      actionsRow.appendChild(el("a", {
+        style: "font-size:13px;color:#2980b9;text-decoration:none;",
         href: reportUrl,
         target: "_blank",
         rel: "noopener",
         text: "Open as PDF →",
       }));
     }
+
+    // On-demand refresh (added 2026-07-09): queues a one-off regeneration of just this
+    // database's report on Paul's machine -- see Code.gs's action=refresh handling and
+    // scripts/process_refresh_queue.py. Rate-limited to once per 24h per database
+    // server-side, so this button can't be spammed; the response message (queued /
+    // already-requested-today / temporarily-unavailable) is shown as-is, not
+    // reinterpreted here, so the messaging only needs to be right in one place.
+    var refreshStatus = el("span", { style: "font-size:12px;color:#888;" });
+    var refreshBtn = el("button", {
+      type: "button",
+      style: "font-size:12px;color:#2980b9;background:#eef5fb;border:1px solid #cfe2f3;border-radius:4px;padding:4px 10px;cursor:pointer;",
+      text: "Refresh Report",
+    });
+    refreshBtn.addEventListener("click", function () {
+      requestRefresh(databaseName, refreshBtn, refreshStatus);
+    });
+    actionsRow.appendChild(refreshBtn);
+    actionsRow.appendChild(refreshStatus);
+
+    elRoot.appendChild(actionsRow);
 
     var frameSrc = hasHtml
       ? LOOKUP_PROXY_URL + "?db=" + encodeURIComponent(databaseName) + "&view=report"
@@ -90,6 +114,32 @@ geotab.addin.usafsCameraHealth = function () {
       src: frameSrc,
       title: "Camera Health Report",
     }));
+  }
+
+  function requestRefresh(databaseName, btn, statusEl) {
+    btn.disabled = true;
+    var originalLabel = btn.textContent;
+    btn.textContent = "Requesting…";
+    statusEl.textContent = "";
+
+    var url = LOOKUP_PROXY_URL + "?db=" + encodeURIComponent(databaseName) + "&action=refresh";
+    fetch(url)
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("request failed: " + resp.status);
+        return resp.json();
+      })
+      .then(function (result) {
+        statusEl.textContent = result.message || "Refresh requested.";
+        statusEl.style.color = (result.status === "unavailable") ? "#e74c3c" : "#555";
+      })
+      .catch(function (err) {
+        statusEl.textContent = "Couldn't request a refresh right now (" + err.message + "). Try again shortly.";
+        statusEl.style.color = "#e74c3c";
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      });
   }
 
   // Google Drive "webViewLink" URLs look like .../file/d/{id}/view?usp=... -- the
