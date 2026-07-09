@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Camera Health</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+    color: #2b2b2b;
+    background: #ffffff;
+  }
+  #usafsCameraHealthRoot {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    box-sizing: border-box;
+    padding: 12px 16px 16px 16px;
+  }
+  .usafs-camera-message {
+    padding: 24px 8px;
+    font-size: 14px;
+    color: #555;
+    line-height: 1.5;
+  }
+  .usafs-camera-meta {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 6px;
+  }
+  .usafs-camera-open-link {
+    display: inline-block;
+    font-size: 13px;
+    color: #2980b9;
+    text-decoration: none;
+    margin-bottom: 10px;
+  }
+  .usafs-camera-open-link:hover {
+    text-decoration: underline;
+  }
+  .usafs-camera-frame {
+    flex: 1;
+    width: 100%;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+  }
+</style>
+</head>
+<body>
+  <div id="usafsCameraHealthRoot">
+    <div class="usafs-camera-message">Loading your camera health report…</div>
+  </div>
+  <script src="addin.js"></script>
+</body>
+</html>
