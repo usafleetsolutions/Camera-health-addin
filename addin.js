@@ -112,14 +112,17 @@ geotab.addin.usafsCameraHealth = function () {
       elRoot = document.getElementById("usafsCameraHealthRoot");
       renderMessage("Loading your camera health report…");
 
-      api.getSession(
-        function (session) {
+      // api.getSession() inside a real MyGeotab add-in only supports the single-
+      // callback form -- passing a second (error) callback throws a synchronous
+      // "MethodNotSupported" before anything else runs, which is what happened here
+      // during pilot testing on hunt_sons (2026-07-08). Wrap in try/catch instead.
+      try {
+        api.getSession(function (session) {
           loadReport(session.database);
-        },
-        function () {
-          renderMessage("Couldn't identify this database's session. Try reloading the page.");
-        }
-      );
+        });
+      } catch (err) {
+        renderMessage("Couldn't identify this database's session (" + err.message + "). Try reloading the page.");
+      }
 
       callback();
     },
