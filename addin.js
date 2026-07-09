@@ -38,9 +38,22 @@ geotab.addin.usafsCameraHealth = function () {
     return node;
   }
 
+  // Every style below is INLINE (a "style" attribute), not a CSS class. MyGeotab
+  // appears to mirror/clone this page's rendered DOM nodes into its own page rather
+  // than displaying our iframe directly -- confirmed during pilot testing on
+  // hunt_sons (2026-07-08): repeated changes to the <style> block in index.html had
+  // zero visual effect even after confirming via curl the updated CSS was genuinely
+  // live. A cloned node carries its own inline style with it; it does not carry a
+  // separate stylesheet's rules along. min-height is used instead of percentage-based
+  // height throughout, since percentage height depends on an ancestor's computed
+  // height, and we have no visibility into (or control over) whatever MyGeotab's own
+  // wrapper element around the mirrored content actually is.
+
   function renderMessage(text) {
     elRoot.innerHTML = "";
-    elRoot.appendChild(el("div", { class: "usafs-camera-message" }, [
+    elRoot.appendChild(el("div", {
+      style: "padding:24px 8px;font-size:14px;color:#555;line-height:1.5;",
+    }, [
       document.createTextNode(text),
     ]));
   }
@@ -51,14 +64,16 @@ geotab.addin.usafsCameraHealth = function () {
   function renderReport(databaseName, reportUrl, generatedAt, hasHtml) {
     elRoot.innerHTML = "";
 
-    var meta = el("div", { class: "usafs-camera-meta" }, [
+    var meta = el("div", {
+      style: "font-size:12px;color:#888;margin-bottom:6px;",
+    }, [
       document.createTextNode(generatedAt ? "Report generated: " + generatedAt : ""),
     ]);
     elRoot.appendChild(meta);
 
     if (reportUrl) {
       elRoot.appendChild(el("a", {
-        class: "usafs-camera-open-link",
+        style: "display:inline-block;font-size:13px;color:#2980b9;text-decoration:none;margin-bottom:10px;",
         href: reportUrl,
         target: "_blank",
         rel: "noopener",
@@ -71,7 +86,7 @@ geotab.addin.usafsCameraHealth = function () {
       : toDrivePreviewUrl(reportUrl);
 
     elRoot.appendChild(el("iframe", {
-      class: "usafs-camera-frame",
+      style: "display:block;width:100%;min-height:600px;flex:1 1 auto;border:1px solid #e0e0e0;border-radius:6px;",
       src: frameSrc,
       title: "Camera Health Report",
     }));
