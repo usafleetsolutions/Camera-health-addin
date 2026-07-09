@@ -84,9 +84,30 @@ geotab.addin.usafsCameraHealth = function () {
     return url.replace(/\/view(\?.*)?$/, "/preview");
   }
 
-  function loadReport(databaseName) {
+  // notifyReady() is MyGeotab's "I'm initialized" signal (the callback passed into
+  // initialize()). Earlier versions called it synchronously, immediately, before any
+  // real content existed -- pilot testing on hunt_sons (2026-07-08) showed MyGeotab
+  // renders the add-in in a small, fixed, scrollable box that never grows afterward,
+  // strongly suggesting MyGeotab sizes/finalizes its container around whatever content
+  // exists at the moment this callback fires, and doesn't re-measure later. Every
+  // render path below (success, not-found, not-monitored, error) now calls this AFTER
+  // painting real content, and guards against double-calling since only one path runs.
+  var readyCalled = false;
+  function notifyReady(callback) {
+    if (readyCalled) return;
+    readyCalled = true;
+    // One paint/layout tick so the DOM mutation above is actually reflected before
+    // MyGeotab measures -- requestAnimationFrame guarantees a layout has happened,
+    // a plain synchronous call right after innerHTML changes might not.
+    requestAnimationFrame(function () {
+      callback();
+    });
+  }
+
+  function loadReport(databaseName, callback) {
     if (LOOKUP_PROXY_URL.indexOf("REPLACE_WITH") === 0) {
       renderMessage("Camera Health Add-In isn't fully configured yet -- ask your account manager to check back soon.");
+      notifyReady(callback);
       return;
     }
 
@@ -110,6 +131,9 @@ geotab.addin.usafsCameraHealth = function () {
       })
       .catch(function (err) {
         renderMessage("Couldn't load the camera health report right now (" + err.message + "). Try again shortly, or contact your account manager.");
+      })
+      .finally(function () {
+        notifyReady(callback);
       });
   }
 
@@ -124,13 +148,12 @@ geotab.addin.usafsCameraHealth = function () {
       // during pilot testing on hunt_sons (2026-07-08). Wrap in try/catch instead.
       try {
         api.getSession(function (session) {
-          loadReport(session.database);
+          loadReport(session.database, callback);
         });
       } catch (err) {
         renderMessage("Couldn't identify this database's session (" + err.message + "). Try reloading the page.");
+        notifyReady(callback);
       }
-
-      callback();
     },
 
     focus: function () {},
