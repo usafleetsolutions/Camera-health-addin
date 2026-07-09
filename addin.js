@@ -17,10 +17,16 @@
 
 var LOOKUP_PROXY_URL = "https://script.google.com/macros/s/AKfycbyQSmpTatHxXQHzv7MD_l_PE4T4p6oFtRi2r8iaxtGL4bu7fqXDHYA5anlDn_g-zWbo/exec";
 
+// Confirmed live (2026-07-09), reused from an earlier logo-sizing spike in this same
+// repo (logo-test.html/.js) -- USA Fleet Solutions' own marketing site, not something
+// we host ourselves.
+var LOGO_URL = "https://www.usafleetsolutions.com/wp-content/themes/usa-fleet/images/logo.png";
+
 geotab.addin.usafsCameraHealth = function () {
   "use strict";
 
   var elRoot = null;
+  var contentRoot = null;
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -49,9 +55,36 @@ geotab.addin.usafsCameraHealth = function () {
   // height, and we have no visibility into (or control over) whatever MyGeotab's own
   // wrapper element around the mirrored content actually is.
 
+  // Shown once, above whatever the current state is (loading / error / report) --
+  // per Paul (2026-07-09): needs to be obviously "USA Fleet Solutions" branded (this
+  // is a differentiator vs. other Geotab resellers, most of whom offer nothing like
+  // it) but with a short name and a compact logo, since there's limited real estate
+  // above the actual report content.
+  function renderBrandHeader() {
+    return el("div", {
+      style: "display:flex;align-items:center;gap:12px;padding:2px 0 12px 0;margin-bottom:12px;border-bottom:1px solid #eee;",
+    }, [
+      el("img", {
+        src: LOGO_URL,
+        alt: "USA Fleet Solutions",
+        style: "display:block;width:110px;height:auto;flex-shrink:0;",
+      }),
+      el("div", {}, [
+        el("div", {
+          style: "font-size:15px;font-weight:700;color:#003087;line-height:1.2;",
+          text: "USA Fleet Camera Health",
+        }),
+        el("div", {
+          style: "font-size:11px;color:#888;line-height:1.4;margin-top:3px;",
+          text: "A USA Fleet Solutions exclusive add-in for our customers. Issues? Contact support@usafleetsolutions.com.",
+        }),
+      ]),
+    ]);
+  }
+
   function renderMessage(text) {
-    elRoot.innerHTML = "";
-    elRoot.appendChild(el("div", {
+    contentRoot.innerHTML = "";
+    contentRoot.appendChild(el("div", {
       style: "padding:24px 8px;font-size:14px;color:#555;line-height:1.5;",
     }, [
       document.createTextNode(text),
@@ -62,14 +95,14 @@ geotab.addin.usafsCameraHealth = function () {
   // private Drive file server-side -- see Code.gs). hasHtml=false: fall back to the
   // Drive PDF preview (older customers whose HTML hasn't been privately uploaded yet).
   function renderReport(databaseName, reportUrl, generatedAt, hasHtml) {
-    elRoot.innerHTML = "";
+    contentRoot.innerHTML = "";
 
     var meta = el("div", {
       style: "font-size:12px;color:#888;margin-bottom:6px;",
     }, [
       document.createTextNode(generatedAt ? "Report generated: " + generatedAt : ""),
     ]);
-    elRoot.appendChild(meta);
+    contentRoot.appendChild(meta);
 
     var actionsRow = el("div", {
       style: "display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px;",
@@ -103,13 +136,13 @@ geotab.addin.usafsCameraHealth = function () {
     actionsRow.appendChild(refreshBtn);
     actionsRow.appendChild(refreshStatus);
 
-    elRoot.appendChild(actionsRow);
+    contentRoot.appendChild(actionsRow);
 
     var frameSrc = hasHtml
       ? LOOKUP_PROXY_URL + "?db=" + encodeURIComponent(databaseName) + "&view=report"
       : toDrivePreviewUrl(reportUrl);
 
-    elRoot.appendChild(el("iframe", {
+    contentRoot.appendChild(el("iframe", {
       style: "display:block;width:100%;min-height:600px;flex:1 1 auto;border:1px solid #e0e0e0;border-radius:6px;",
       src: frameSrc,
       title: "Camera Health Report",
@@ -205,6 +238,11 @@ geotab.addin.usafsCameraHealth = function () {
   return {
     initialize: function (api, state, callback) {
       elRoot = document.getElementById("usafsCameraHealthRoot");
+      elRoot.innerHTML = "";
+      elRoot.appendChild(renderBrandHeader());
+      contentRoot = el("div", {});
+      elRoot.appendChild(contentRoot);
+
       renderMessage("Loading your camera health report…");
 
       // api.getSession() inside a real MyGeotab add-in only supports the single-
