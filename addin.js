@@ -45,35 +45,41 @@ geotab.addin.usafsCameraHealth = function () {
     ]));
   }
 
-  function renderReport(reportUrl, generatedAt) {
+  // hasHtml=true: embed the real report, served live by the lookup proxy (reads a
+  // private Drive file server-side -- see Code.gs). hasHtml=false: fall back to the
+  // Drive PDF preview (older customers whose HTML hasn't been privately uploaded yet).
+  function renderReport(databaseName, reportUrl, generatedAt, hasHtml) {
     elRoot.innerHTML = "";
 
     var meta = el("div", { class: "usafs-camera-meta" }, [
       document.createTextNode(generatedAt ? "Report generated: " + generatedAt : ""),
     ]);
-
-    var openLink = el("a", {
-      class: "usafs-camera-open-link",
-      href: reportUrl,
-      target: "_blank",
-      rel: "noopener",
-      text: "Open report in a new tab →",
-    });
-
-    var previewUrl = toDrivePreviewUrl(reportUrl);
-    var frame = el("iframe", {
-      class: "usafs-camera-frame",
-      src: previewUrl,
-      title: "Camera Health Report",
-    });
-
     elRoot.appendChild(meta);
-    elRoot.appendChild(openLink);
-    elRoot.appendChild(frame);
+
+    if (reportUrl) {
+      elRoot.appendChild(el("a", {
+        class: "usafs-camera-open-link",
+        href: reportUrl,
+        target: "_blank",
+        rel: "noopener",
+        text: "Open as PDF →",
+      }));
+    }
+
+    var frameSrc = hasHtml
+      ? LOOKUP_PROXY_URL + "?db=" + encodeURIComponent(databaseName) + "&view=report"
+      : toDrivePreviewUrl(reportUrl);
+
+    elRoot.appendChild(el("iframe", {
+      class: "usafs-camera-frame",
+      src: frameSrc,
+      title: "Camera Health Report",
+    }));
   }
 
   // Google Drive "webViewLink" URLs look like .../file/d/{id}/view?usp=... -- the
-  // /preview variant is the one that's embeddable in an iframe.
+  // /preview variant is the one that's embeddable in an iframe. Only used as a fallback
+  // now that the proxy can serve the real HTML report directly (see renderReport).
   function toDrivePreviewUrl(url) {
     return url.replace(/\/view(\?.*)?$/, "/preview");
   }
@@ -96,11 +102,11 @@ geotab.addin.usafsCameraHealth = function () {
           renderMessage("Camera health monitoring isn't set up for this database yet. Contact your account manager if you'd like to be added.");
           return;
         }
-        if (!match.monitored || !match.report_url) {
+        if (!match.monitored || (!match.report_url && !match.has_html)) {
           renderMessage("This database is on the camera health list, but a report hasn't been generated yet. Check back after the next weekly run.");
           return;
         }
-        renderReport(match.report_url, match.generated_at);
+        renderReport(databaseName, match.report_url, match.generated_at, match.has_html);
       })
       .catch(function (err) {
         renderMessage("Couldn't load the camera health report right now (" + err.message + "). Try again shortly, or contact your account manager.");
