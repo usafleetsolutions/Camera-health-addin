@@ -13,7 +13,7 @@ geotab.addin.usafsLogoTest = function () {
       elRoot.innerHTML = "";
       elRoot.appendChild((function () {
         var img = document.createElement("img");
-        img.setAttribute("src", "https://www.usafleetsolutions.com/wp-content/uploads/2022/09/USA-Fleet-Solutions-Logo.png");
+        img.setAttribute("src", "https://www.usafleetsolutions.com/wp-content/themes/usa-fleet/images/logo.png");
         img.setAttribute("alt", "USA Fleet Solutions");
         img.setAttribute("style", "display:block;max-width:100%;width:480px;height:auto;");
         img.onerror = function () {
