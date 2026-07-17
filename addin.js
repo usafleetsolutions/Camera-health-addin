@@ -380,28 +380,44 @@ geotab.addin.usafsCameraHealth = function () {
   // add-in" clearance) -- it can't check a DIFFERENT add-in's permission. state's
   // hasAccessToPage(hash) can, for any page by its hash identifier.
   //
-  // CAMERA_CLEARANCE_PAGE_HASH is a BEST GUESS, CONFIRMED WRONG live in tactrans on
-  // 2026-07-17 -- a user WITH the "View mygeotab-camera-addin add-in" clearance got
-  // `false` (wrongly blocked) and a user WITHOUT it got `true` (wrongly allowed),
-  // backwards in both directions. "mygeotabcameraaddin" is not the identifier
-  // hasAccessToPage() actually expects. GATE_ENABLED below is off until the real
-  // identifier is found -- see [[project_camera_addin_clearance_gating]] in memory.
-  var CAMERA_CLEARANCE_PAGE_HASH = "mygeotabcameraaddin";
+  // "mygeotabcameraaddin" (an assumed page hash) was CONFIRMED WRONG live in tactrans
+  // on 2026-07-17 -- returned false for every user tested, regardless of actual
+  // clearance. Root cause found via the Geotab API (queried the real AddIn entity
+  // directly): "mygeotab-camera-addin" has NO dedicated top-level page of its own --
+  // its items inject into existing pages (tripsHistory, map, exception) -- so there
+  // was never a matching page for hasAccessToPage() to check. Its REAL security
+  // identifiers (confirmed via the AddIn entity's own securityIds) are:
+  // AdministerPairedCameras, AdministerCameraSettings, ViewCameraLiveVideo,
+  // ViewRecordedVideo, ViewExceptions -- plus the auto-generated overall "View
+  // mygeotab-camera-addin add-in" clearance from its enableViewSecurityId:true,
+  // whose internal identifier string isn't confirmed yet. Testing several
+  // candidates at once below rather than guessing one at a time again.
+  // GATE_ENABLED is off until one of these is confirmed correct -- see
+  // [[project_camera_addin_clearance_gating]] in memory.
   var GATE_ENABLED = false;
+  var CLEARANCE_CANDIDATES = [
+    "mygeotabcameraaddin",
+    "ViewCameraLiveVideo",
+    "ViewRecordedVideo",
+    "ViewExceptions",
+    "AdministerCameraSettings",
+    "AdministerPairedCameras",
+    "aYyOckrGm-kyOMYKpBEifog", // the AddIn entity's own raw ID, in case that's what's expected
+  ];
 
-  function checkCameraClearance(state) {
-    // Fails OPEN (treated as allowed) on any error -- if hasAccessToPage doesn't
-    // exist in some context, or the hash is wrong and throws rather than just
-    // returning false, we'd rather risk over-exposure than silently break the
-    // add-in for everyone.
-    try {
-      if (state && typeof state.hasAccessToPage === "function") {
-        return state.hasAccessToPage(CAMERA_CLEARANCE_PAGE_HASH);
+  function checkClearanceCandidates(state) {
+    var results = {};
+    for (var i = 0; i < CLEARANCE_CANDIDATES.length; i++) {
+      var candidate = CLEARANCE_CANDIDATES[i];
+      try {
+        results[candidate] = (state && typeof state.hasAccessToPage === "function")
+          ? state.hasAccessToPage(candidate)
+          : "n/a";
+      } catch (err) {
+        results[candidate] = "error: " + err.message;
       }
-    } catch (err) {
-      return "error: " + err.message;
     }
-    return "n/a";
+    return results;
   }
 
   return {
@@ -413,15 +429,19 @@ geotab.addin.usafsCameraHealth = function () {
       elRoot.appendChild(contentRoot);
 
       // Diagnostic only right now -- NOT used to gate visibility (GATE_ENABLED is
-      // false) since the guessed hash is confirmed wrong. Kept visible so we can
-      // keep collecting real results while hunting for the correct identifier.
-      var rawCheckResult = checkCameraClearance(state);
-      var hasCameraClearance = !GATE_ENABLED || rawCheckResult === true;
+      // false) since no candidate is confirmed yet. Kept visible so we can collect
+      // real results across several candidates in one test round instead of one
+      // guess at a time.
+      var results = checkClearanceCandidates(state);
+      var hasCameraClearance = true; // gate disabled -- see GATE_ENABLED above
 
+      var debugLines = ["[debug] camera clearance candidates (gating disabled):"];
+      for (var key in results) {
+        debugLines.push("  " + key + ": " + results[key]);
+      }
       elRoot.appendChild(el("div", {
-        style: "font-size:10px;color:#bbb;margin-bottom:4px;",
-        text: "[debug] camera clearance check (" + CAMERA_CLEARANCE_PAGE_HASH + "): " +
-          rawCheckResult + (GATE_ENABLED ? "" : " -- gating disabled, not enforced"),
+        style: "font-size:10px;color:#bbb;margin-bottom:4px;white-space:pre-line;",
+        text: debugLines.join("\n"),
       }));
 
       if (!hasCameraClearance) {
