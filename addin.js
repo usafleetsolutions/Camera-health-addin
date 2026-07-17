@@ -372,53 +372,20 @@ geotab.addin.usafsCameraHealth = function () {
       });
   }
 
-  // Mirror MyGeotab's own camera-data clearance (added 2026-07-17, per Paul): a user
-  // who isn't allowed to view MyGeotab's built-in Camera Add-In / dash cam data
-  // shouldn't be able to see ours either, since it surfaces the same category of
-  // camera health/status information. manifest.json's enableViewSecurityId only
-  // gates OUR OWN add-in's visibility (a separate "View USA Fleet Camera Health
-  // add-in" clearance) -- it can't check a DIFFERENT add-in's permission. state's
-  // hasAccessToPage(hash) can, for any page by its hash identifier.
-  //
-  // "mygeotabcameraaddin" (an assumed page hash) was CONFIRMED WRONG live in tactrans
-  // on 2026-07-17 -- returned false for every user tested, regardless of actual
-  // clearance. Root cause found via the Geotab API (queried the real AddIn entity
-  // directly): "mygeotab-camera-addin" has NO dedicated top-level page of its own --
-  // its items inject into existing pages (tripsHistory, map, exception) -- so there
-  // was never a matching page for hasAccessToPage() to check. Its REAL security
-  // identifiers (confirmed via the AddIn entity's own securityIds) are:
-  // AdministerPairedCameras, AdministerCameraSettings, ViewCameraLiveVideo,
-  // ViewRecordedVideo, ViewExceptions -- plus the auto-generated overall "View
-  // mygeotab-camera-addin add-in" clearance from its enableViewSecurityId:true,
-  // whose internal identifier string isn't confirmed yet. Testing several
-  // candidates at once below rather than guessing one at a time again.
-  // GATE_ENABLED is off until one of these is confirmed correct -- see
-  // [[project_camera_addin_clearance_gating]] in memory.
-  var GATE_ENABLED = false;
-  var CLEARANCE_CANDIDATES = [
-    "mygeotabcameraaddin",
-    "ViewCameraLiveVideo",
-    "ViewRecordedVideo",
-    "ViewExceptions",
-    "AdministerCameraSettings",
-    "AdministerPairedCameras",
-    "aYyOckrGm-kyOMYKpBEifog", // the AddIn entity's own raw ID, in case that's what's expected
-  ];
-
-  function checkClearanceCandidates(state) {
-    var results = {};
-    for (var i = 0; i < CLEARANCE_CANDIDATES.length; i++) {
-      var candidate = CLEARANCE_CANDIDATES[i];
-      try {
-        results[candidate] = (state && typeof state.hasAccessToPage === "function")
-          ? state.hasAccessToPage(candidate)
-          : "n/a";
-      } catch (err) {
-        results[candidate] = "error: " + err.message;
-      }
-    }
-    return results;
-  }
+  // Camera-data clearance gating (attempted 2026-07-17, per Paul): wanted this
+  // add-in to mirror MyGeotab's own "View mygeotab-camera-addin add-in" clearance,
+  // so a user without access to Geotab's built-in camera data couldn't see ours
+  // either. Abandoned after live testing in tactrans -- state.hasAccessToPage()
+  // only checks genuine built-in MyGeotab pages (map, users, etc.), not custom
+  // per-add-in security identifiers; confirmed by a full administrator getting
+  // `false` on every real candidate identifier (including ones read directly off
+  // the actual AddIn entity via the Geotab API). There's no documented, reliable
+  // way for one add-in to check a DIFFERENT add-in's custom clearance from client
+  // JS. Solved instead via manifest.json's own enableViewSecurityId -- gives this
+  // add-in its own supported "View USA Fleet Camera Health add-in" clearance,
+  // which Paul (or each customer's admin) aligns manually to whichever clearance
+  // levels already have camera access. See [[project_camera_addin_clearance_gating]]
+  // in memory for the full investigation.
 
   return {
     initialize: function (api, state, callback) {
@@ -427,28 +394,6 @@ geotab.addin.usafsCameraHealth = function () {
       elRoot.appendChild(renderBrandHeader());
       contentRoot = el("div", {});
       elRoot.appendChild(contentRoot);
-
-      // Diagnostic only right now -- NOT used to gate visibility (GATE_ENABLED is
-      // false) since no candidate is confirmed yet. Kept visible so we can collect
-      // real results across several candidates in one test round instead of one
-      // guess at a time.
-      var results = checkClearanceCandidates(state);
-      var hasCameraClearance = true; // gate disabled -- see GATE_ENABLED above
-
-      var debugLines = ["[debug] camera clearance candidates (gating disabled):"];
-      for (var key in results) {
-        debugLines.push("  " + key + ": " + results[key]);
-      }
-      elRoot.appendChild(el("div", {
-        style: "font-size:10px;color:#bbb;margin-bottom:4px;white-space:pre-line;",
-        text: debugLines.join("\n"),
-      }));
-
-      if (!hasCameraClearance) {
-        renderMessage("You don't have access to camera data in this account. Contact your fleet administrator if you believe this is incorrect.");
-        notifyReady(callback);
-        return;
-      }
 
       renderMessage("Loading your camera health report…");
 
