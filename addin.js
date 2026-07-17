@@ -372,6 +372,41 @@ geotab.addin.usafsCameraHealth = function () {
       });
   }
 
+  // Mirror MyGeotab's own camera-data clearance (added 2026-07-17, per Paul): a user
+  // who isn't allowed to view MyGeotab's built-in Camera Add-In / dash cam data
+  // shouldn't be able to see ours either, since it surfaces the same category of
+  // camera health/status information. manifest.json's enableViewSecurityId only
+  // gates OUR OWN add-in's visibility (a separate "View USA Fleet Camera Health
+  // add-in" clearance) -- it can't check a DIFFERENT add-in's permission. state's
+  // hasAccessToPage(hash) can, for any page by its hash identifier.
+  //
+  // CAMERA_CLEARANCE_PAGE_HASH is a BEST GUESS, not yet independently confirmed --
+  // derived from Geotab's own camera add-in's manifest hosting URL
+  // (app.geotab.com/addins/mygeotabcameraaddin/production/manifest.json), which
+  // strongly suggests this is the identifier, but official docs don't spell out
+  // hasAccessToPage's exact identifier format for another add-in. MUST be verified
+  // live with two real MyGeotab users (one with the clearance, one without) before
+  // trusting this anywhere beyond the tactrans pilot -- see the temporary debug line
+  // below, which shows the raw check result so that's possible without dev tools.
+  var CAMERA_CLEARANCE_PAGE_HASH = "mygeotabcameraaddin";
+
+  function checkCameraClearance(state) {
+    // Fails OPEN (treated as allowed) on any error -- if hasAccessToPage doesn't
+    // exist in some context, or the hash is wrong and throws rather than just
+    // returning false, we'd rather risk over-exposure than silently break the
+    // add-in for everyone. A wrong hash that resolves to a clean `false` for
+    // everyone is the scarier failure mode and is exactly what the debug line
+    // below exists to catch before wider rollout.
+    try {
+      if (state && typeof state.hasAccessToPage === "function") {
+        return state.hasAccessToPage(CAMERA_CLEARANCE_PAGE_HASH);
+      }
+    } catch (err) {
+      return true;
+    }
+    return true;
+  }
+
   return {
     initialize: function (api, state, callback) {
       elRoot = document.getElementById("usafsCameraHealthRoot");
@@ -379,6 +414,22 @@ geotab.addin.usafsCameraHealth = function () {
       elRoot.appendChild(renderBrandHeader());
       contentRoot = el("div", {});
       elRoot.appendChild(contentRoot);
+
+      var hasCameraClearance = checkCameraClearance(state);
+
+      // TEMPORARY (remove once Paul confirms CAMERA_CLEARANCE_PAGE_HASH is correct
+      // against real test accounts) -- makes the raw check result visible without
+      // needing browser dev tools.
+      elRoot.appendChild(el("div", {
+        style: "font-size:10px;color:#bbb;margin-bottom:4px;",
+        text: "[debug] camera clearance check (" + CAMERA_CLEARANCE_PAGE_HASH + "): " + hasCameraClearance,
+      }));
+
+      if (!hasCameraClearance) {
+        renderMessage("You don't have access to camera data in this account. Contact your fleet administrator if you believe this is incorrect.");
+        notifyReady(callback);
+        return;
+      }
 
       renderMessage("Loading your camera health report…");
 
