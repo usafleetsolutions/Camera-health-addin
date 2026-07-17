@@ -182,6 +182,130 @@ geotab.addin.usafsCameraHealth = function () {
     return url.replace(/\/view(\?.*)?$/, "/preview");
   }
 
+  // ── Dual-vendor support (added 2026-07-14) ──────────────────────────────────
+  // A small number of mid-migration customers (Western Turf, TAC Transportation)
+  // genuinely run both Geotab-side cameras (GO Focus/Surfsight) AND VisionTrack at
+  // once -- per Paul, these should show as two lines/two reports, not one merged
+  // view. The lookup proxy always answers by this database's OWN key (the only
+  // thing api.getSession() can tell us -- VisionTrack orgs aren't part of MyGeotab
+  // at all), but a dual-vendor row's response carries a second report (has_vt=true,
+  // vt_report_url/vt_generated_at/has_vt_html/vt_monitored/vt_key) riding alongside
+  // the primary one. See publish_camera_addin_index.py's merge logic.
+  //
+  // renderReport() above stays untouched and is still used for the ~99 single-vendor
+  // customers -- this is a separate path so that population has zero behavior change.
+
+  function tabButtonStyle(active) {
+    return "font-size:13px;font-weight:" + (active ? "700" : "400") +
+      ";color:" + (active ? "#003087" : "#888") +
+      ";background:none;border:none;border-bottom:2px solid " + (active ? "#003087" : "transparent") +
+      ";padding:6px 4px;cursor:pointer;";
+  }
+
+  // Builds one tab's content: a "not ready yet" message if that system's report
+  // isn't monitored/generated yet, otherwise the same meta/actions/iframe structure
+  // renderReport() uses for the single-report case. `databaseName` is always the
+  // Geotab database (that's the only valid ?db= value the proxy accepts for
+  // &view=report); `refreshKey` is what gets sent for &action=refresh, which DOES
+  // differ per system (the Geotab database for one tab, "visiontrack-<prefix>" for
+  // the other) since process_refresh_queue.py dispatches on that key's prefix.
+  function buildSystemPanel(databaseName, refreshKey, which, info) {
+    var panel = el("div", {});
+
+    if (!info.monitored || (!info.reportUrl && !info.hasHtml)) {
+      panel.appendChild(el("div", {
+        style: "padding:24px 8px;font-size:14px;color:#555;line-height:1.5;",
+      }, [
+        document.createTextNode(
+          which === "vt"
+            ? "VisionTrack camera health hasn't been generated for this account yet. Check back after the next weekly run."
+            : "This database is on the camera health list, but a report hasn't been generated yet. Check back after the next weekly run."
+        ),
+      ]));
+      return panel;
+    }
+
+    var meta = el("div", {
+      style: "font-size:12px;color:#888;margin-bottom:6px;",
+    }, [
+      document.createTextNode(info.generatedAt ? "Report generated: " + info.generatedAt : ""),
+    ]);
+    panel.appendChild(meta);
+
+    var actionsRow = el("div", {
+      style: "display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px;",
+    });
+
+    if (info.reportUrl) {
+      actionsRow.appendChild(el("a", {
+        style: "font-size:13px;color:#2980b9;text-decoration:none;",
+        href: info.reportUrl,
+        target: "_blank",
+        rel: "noopener",
+        text: "Open as PDF →",
+      }));
+    }
+
+    var refreshStatus = el("span", { style: "font-size:12px;color:#888;" });
+    var refreshBtn = el("button", {
+      type: "button",
+      style: "font-size:12px;color:#2980b9;background:#eef5fb;border:1px solid #cfe2f3;border-radius:4px;padding:4px 10px;cursor:pointer;",
+      text: "Refresh Report",
+    });
+    refreshBtn.addEventListener("click", function () {
+      requestRefresh(refreshKey, refreshBtn, refreshStatus);
+    });
+    actionsRow.appendChild(refreshBtn);
+    actionsRow.appendChild(refreshStatus);
+    panel.appendChild(actionsRow);
+
+    var frameSrc = info.hasHtml
+      ? LOOKUP_PROXY_URL + "?db=" + encodeURIComponent(databaseName) + "&view=report&which=" + which
+      : toDrivePreviewUrl(info.reportUrl);
+
+    panel.appendChild(el("iframe", {
+      style: "display:block;width:100%;min-height:600px;flex:1 1 auto;border:1px solid #e0e0e0;border-radius:6px;",
+      src: frameSrc,
+      title: which === "vt" ? "VisionTrack Camera Health Report" : "Camera Health Report",
+    }));
+
+    return panel;
+  }
+
+  function renderDualReport(databaseName, vtRefreshKey, geotabInfo, vtInfo) {
+    contentRoot.innerHTML = "";
+
+    var tabBar = el("div", {
+      style: "display:flex;gap:16px;margin-bottom:10px;border-bottom:1px solid #eee;",
+    });
+    var geotabTabBtn = el("button", { type: "button", style: tabButtonStyle(false), text: "Geotab Cameras" });
+    var vtTabBtn = el("button", { type: "button", style: tabButtonStyle(false), text: "VisionTrack Cameras" });
+    tabBar.appendChild(geotabTabBtn);
+    tabBar.appendChild(vtTabBtn);
+
+    var geotabPanel = buildSystemPanel(databaseName, databaseName, "geotab", geotabInfo);
+    var vtPanel = buildSystemPanel(databaseName, vtRefreshKey, "vt", vtInfo);
+
+    function activate(which) {
+      var isGeotab = which === "geotab";
+      geotabPanel.style.display = isGeotab ? "" : "none";
+      vtPanel.style.display = isGeotab ? "none" : "";
+      geotabTabBtn.setAttribute("style", tabButtonStyle(isGeotab));
+      vtTabBtn.setAttribute("style", tabButtonStyle(!isGeotab));
+    }
+
+    geotabTabBtn.addEventListener("click", function () { activate("geotab"); });
+    vtTabBtn.addEventListener("click", function () { activate("vt"); });
+
+    contentRoot.appendChild(tabBar);
+    contentRoot.appendChild(geotabPanel);
+    contentRoot.appendChild(vtPanel);
+
+    // Default to whichever side actually has a ready report, in case one system's
+    // weekly run hasn't produced anything yet for this brand-new dual customer.
+    activate(geotabInfo.monitored ? "geotab" : (vtInfo.monitored ? "vt" : "geotab"));
+  }
+
   // notifyReady() is MyGeotab's "I'm initialized" signal (the callback passed into
   // initialize()). Earlier versions called it synchronously, immediately, before any
   // real content existed -- pilot testing on hunt_sons (2026-07-08) showed MyGeotab
@@ -219,6 +343,19 @@ geotab.addin.usafsCameraHealth = function () {
       .then(function (match) {
         if (!match.found) {
           renderMessage("Camera health monitoring isn't set up for this database yet. Contact your account manager if you'd like to be added.");
+          return;
+        }
+        if (match.has_vt) {
+          // Dual-vendor customer -- show both systems as separate tabs instead of
+          // picking one. Each tab handles its own "not ready yet" state internally
+          // (buildSystemPanel), so neither system being ready shouldn't block the
+          // other from displaying.
+          renderDualReport(
+            databaseName,
+            match.vt_key || databaseName,
+            { reportUrl: match.report_url, generatedAt: match.generated_at, hasHtml: match.has_html, monitored: !!match.monitored },
+            { reportUrl: match.vt_report_url, generatedAt: match.vt_generated_at, hasHtml: match.has_vt_html, monitored: !!match.vt_monitored }
+          );
           return;
         }
         if (!match.monitored || (!match.report_url && !match.has_html)) {
